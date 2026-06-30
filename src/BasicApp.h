@@ -1,9 +1,14 @@
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 #include <GLFW/glfw3native.h>
+
+
+#define GLM_FORCE_RADIANS
 #include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
@@ -80,6 +85,12 @@ struct Vertex {
     }
 };
 
+struct UniformBufferObject {
+    glm::mat4 model;
+    glm::mat4 view;
+    glm::mat4 proj;
+};
+
 const std::vector<Vertex> vertices = {
     {{-0.5f,-0.5f},  {1.0f,0.0f,0.0f}},
     {{0.5f,-0.5f}, {0.0f,1.0f,0.0f}},
@@ -132,6 +143,13 @@ private:
     VkDeviceMemory vertexBufferMemory;
     VkBuffer indexBuffer;
     VkDeviceMemory indexBufferMemory;
+    VkDescriptorSetLayout descriptorSetLayout;
+    std::vector<VkBuffer> uniformBuffers;
+    std::vector<VkDeviceMemory> uniformBuffersMemory;
+    std::vector<void *> uniformBuffersMapped;
+
+
+
 
     // Creates the application window using GLFW
     void initWindow();
@@ -323,4 +341,10 @@ private:
     void copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size);
 
     void createIndexBuffer();
+
+    void createDescriptorSetLayout();
+
+    void createUniformBuffers();
+
+    void updateUniformBuffer(uint32_t currentImage);
 };
