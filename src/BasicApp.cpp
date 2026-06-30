@@ -47,6 +47,9 @@ void BasicApp::mainLoop() {
 void BasicApp::cleanup() {
     cleanupSwapChain();
 
+    vkDestroyBuffer(this->device, this->vertexBuffer, nullptr);
+    vkFreeMemory(this->device, this->vertexBufferMemory, nullptr);
+
     vkDestroyPipeline(this->device, this->graphicsPipeline, nullptr);
     vkDestroyPipelineLayout(this->device, this->pipelineLayout, nullptr);
 
@@ -85,6 +88,7 @@ void BasicApp::initVulkan() {
     createGraphicsPipeline();
     createFramebuffers();
     createCommandPool();
+    createVertexBuffer();
     createCommandBuffers();
     createSyncObjects();
 }
@@ -219,12 +223,12 @@ void BasicApp::pickPhysicalDevice() {
 
     for (const auto& device : devices) {
         if (isDeviceSuitable(device)) {
-            this->physical_device = device;
+            this->physicalDevice = device;
             break;
         }
     }
 
-    if (this->physical_device == VK_NULL_HANDLE) {
+    if (this->physicalDevice == VK_NULL_HANDLE) {
         throw std::runtime_error("failed to find a suitable GPU!");
     }
 
@@ -281,7 +285,7 @@ QueueFamilyIndices BasicApp::findQueueFamilies(VkPhysicalDevice device) {
 }
 
 void BasicApp::createLogicalDevice() {
-    QueueFamilyIndices indices = findQueueFamilies(this->physical_device);
+    QueueFamilyIndices indices = findQueueFamilies(this->physicalDevice);
 
     std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
     std::set<uint32_t> uniqueQueueFamilies = {
@@ -319,7 +323,7 @@ void BasicApp::createLogicalDevice() {
         createInfo.enabledLayerCount = 0;
     }
 
-    if (vkCreateDevice(physical_device, &createInfo, nullptr, &this->device) != VK_SUCCESS) {
+    if (vkCreateDevice(physicalDevice, &createInfo, nullptr, &this->device) != VK_SUCCESS) {
         throw std::runtime_error("failed to create logical device!");
     }
 
@@ -411,7 +415,7 @@ VkExtent2D BasicApp::chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabiliti
 }
 
 void BasicApp::createSwapChain() {
-    SwapChainSupportDetails swapChainSupport = querySwapChainSupport(this->physical_device);
+    SwapChainSupportDetails swapChainSupport = querySwapChainSupport(this->physicalDevice);
 
     VkSurfaceFormatKHR surfaceFormat = chooseSurfaceFormat(swapChainSupport.formats);
     VkPresentModeKHR presentMode = chooseSwapPresentMode(swapChainSupport.presentModes);
@@ -434,7 +438,7 @@ void BasicApp::createSwapChain() {
     createInfo.imageArrayLayers = 1;
     createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
-    QueueFamilyIndices indices = findQueueFamilies(this->physical_device);
+    QueueFamilyIndices indices = findQueueFamilies(this->physicalDevice);
     uint32_t queueFamilyIndices[] = {indices.graphicsFamily.value(), indices.presentFamily.value()};
 
     if (indices.graphicsFamily != indices.presentFamily) {
@@ -516,10 +520,14 @@ void BasicApp::createGraphicsPipeline() {
 
     VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
     vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-    vertexInputInfo.vertexBindingDescriptionCount = 0;
-    vertexInputInfo.pVertexBindingDescriptions = nullptr;
-    vertexInputInfo.vertexAttributeDescriptionCount = 0;
-    vertexInputInfo.pVertexAttributeDescriptions = nullptr;
+
+    auto bindingDescription = Vertex::getBindingDescription();
+    auto attributeDescriptions = Vertex::getAttributeDescriptions();
+
+    vertexInputInfo.vertexBindingDescriptionCount = 1;
+    vertexInputInfo.pVertexBindingDescriptions = &bindingDescription;
+    vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size());
+    vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
 
     VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
     inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
@@ -717,7 +725,7 @@ void BasicApp::createFramebuffers() {
 }
 
 void BasicApp::createCommandPool() {
-    QueueFamilyIndices queueFamilyIndices = findQueueFamilies(this->physical_device);
+    QueueFamilyIndices queueFamilyIndices = findQueueFamilies(this->physicalDevice);
 
     VkCommandPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
@@ -783,8 +791,11 @@ void BasicApp::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t image
         scissor.extent = this->swapChainExtent;
         vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
+        VkBuffer vertexBuffers[] = { this->vertexBuffer };
+        VkDeviceSize Offsets[] = { 0 };
+        vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, Offsets);
         // draw triangle !!!
-        vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+        vkCmdDraw(commandBuffer, static_cast<uint32_t>(vertices.size()), 1, 0, 0);
 
     vkCmdEndRenderPass(commandBuffer);
     if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
@@ -906,5 +917,47 @@ void BasicApp::cleanupSwapChain() {
 void BasicApp::framebufferResizeCallback(GLFWwindow *window, int width, int height) {
     auto app = reinterpret_cast<BasicApp*>(glfwGetWindowUserPointer(window));
     app->framebufferResized = true;
+}
+
+void BasicApp::createVertexBuffer() {
+    VkBufferCreateInfo bufferInfo{};
+    bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    bufferInfo.size = sizeof(vertices[0]) * vertices.size();
+    bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+    bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+    if (vkCreateBuffer(this->device, &bufferInfo, nullptr, &this->vertexBuffer) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create vertex buffer!");
+    }
+    VkMemoryRequirements memRequirements;
+    vkGetBufferMemoryRequirements(this->device, this->vertexBuffer, &memRequirements);
+
+    VkMemoryAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    allocInfo.allocationSize = memRequirements.size;
+    allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+    if (vkAllocateMemory(this->device, &allocInfo, nullptr, &this->vertexBufferMemory) != VK_SUCCESS) {
+        throw std::runtime_error("failed to allocate vertex buffer memory!");
+    }
+
+    vkBindBufferMemory(this->device, this->vertexBuffer, this->vertexBufferMemory, 0);
+
+    void* data;
+    vkMapMemory(this->device,this->vertexBufferMemory,0,bufferInfo.size,0, &data);
+    memcpy(data, vertices.data(), bufferInfo.size);
+    vkUnmapMemory(this->device, this->vertexBufferMemory);
+}
+
+uint32_t BasicApp::findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) {
+    VkPhysicalDeviceMemoryProperties memProperties;
+    vkGetPhysicalDeviceMemoryProperties(this->physicalDevice, &memProperties);
+
+    for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
+        if (typeFilter & (1 << i) && (memProperties.memoryTypes[i].propertyFlags & properties) == properties) {
+            return i;
+        }
+    }
+    throw std::runtime_error("failed to find suitable memory type!");
 }
 

@@ -1,6 +1,7 @@
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 #include <GLFW/glfw3native.h>
+#include <glm/glm.hpp>
 
 #include <algorithm>
 #include <cstdlib>
@@ -51,6 +52,40 @@ struct SwapChainSupportDetails {
     std::vector<VkPresentModeKHR> presentModes;  // possible ways to present images (vsync, etc.)
 };
 
+struct Vertex {
+    glm::vec2 position;
+    glm::vec3 color;
+
+    static VkVertexInputBindingDescription getBindingDescription() {
+        VkVertexInputBindingDescription bindingDescription = {};
+        bindingDescription.binding = 0;
+        bindingDescription.stride = sizeof(Vertex);
+        bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+
+        return bindingDescription;
+    }
+
+    static std::array<VkVertexInputAttributeDescription, 2> getAttributeDescriptions() {
+        std::array<VkVertexInputAttributeDescription, 2> attributeDescriptions = {};
+        attributeDescriptions[0].binding = 0;
+        attributeDescriptions[0].location = 0;
+        attributeDescriptions[0].format = VK_FORMAT_R32G32_SFLOAT;
+        attributeDescriptions[0].offset = offsetof(Vertex, position);
+
+        attributeDescriptions[1].binding = 0;
+        attributeDescriptions[1].location = 1;
+        attributeDescriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
+        attributeDescriptions[1].offset = offsetof(Vertex, color);
+        return attributeDescriptions;
+    }
+};
+
+const std::vector<Vertex> vertices = {
+    {{0.0f,-0.5f},  {1.0f,1.0f,1.0f}},
+    {{0.5f,0.5f}, {0.0f,1.0f,0.0f}},
+    {{-0.5f, 0.5f}, {0.0f,0.0f,1.0f}}
+};
+
 class BasicApp {
 public:
 
@@ -67,7 +102,7 @@ private:
     GLFWwindow* window; // the application window created by GLFW
     VkInstance instance; // main entry point into the Vulkan API
     VkDebugUtilsMessengerEXT debugMessenger; // object that receives Vulkan debug messages
-    VkPhysicalDevice physical_device = VK_NULL_HANDLE; // the chosen physical GPU
+    VkPhysicalDevice physicalDevice = VK_NULL_HANDLE; // the chosen physical GPU
     VkDevice device; // "virtual GPU" used to communicate with the physical device
     VkQueue graphicsQueue; // queue used to submit rendering commands
     VkSurfaceKHR surface; // surface representing the window Vulkan draws onto
@@ -88,6 +123,8 @@ private:
     std::vector<VkFence> inFlightFences; // let the CPU wait until a frame's work is finished
     uint32_t currentFrame = 0; // index of the frame currently being processed (for multiple frames in flight)
     bool framebufferResized = false; // true if the window was resized and the swap chain needs recreating
+    VkBuffer vertexBuffer;
+    VkDeviceMemory vertexBufferMemory;
 
     // Creates the application window using GLFW
     void initWindow();
@@ -269,4 +306,8 @@ private:
     // Callback function called by GLFW when the window
     // is resized, to signal that the swap chain needs recreating
     static void framebufferResizeCallback(GLFWwindow* window, int width, int height);
+
+    void createVertexBuffer();
+
+    uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);
 };
