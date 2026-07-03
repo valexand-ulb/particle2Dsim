@@ -10,8 +10,9 @@ find_package(Vulkan REQUIRED)
 
 add_executable(particle2Dsim src/main.cpp
         src/BasicApp.cpp
+        src/BasicApp.h
         external/stb_image_impl.cpp
-        src/BasicApp.h)
+        external/tinyob_impl.cpp)
 
 target_link_libraries(particle2Dsim
         glfw
