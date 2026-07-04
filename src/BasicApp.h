@@ -19,6 +19,7 @@
 #include <fstream>
 #include <limits>
 #include <optional>
+#include <random>
 #include <stdexcept>
 #include <tiny_obj_loader.h>
 #include <unordered_map>
@@ -31,6 +32,8 @@ const std::string MODEL_PATH = "../models/viking_room.obj";
 const std::string TEXTURE_PATH = "../textures/viking_room.png";
 
 const int MAX_FRAMES_IN_FLIGHT = 2;
+
+const uint32_t PARTICLE_COUNT = 8192;
 
 const std::vector<const char*> validationLayers = {
     "VK_LAYER_KHRONOS_validation"
@@ -115,6 +118,38 @@ namespace std {
     };
 }
 
+
+struct Particle {
+    glm::vec2 position;
+    glm::vec2 velocity;
+    glm::vec4 color;
+
+    static VkVertexInputBindingDescription getBindingDescription() {
+        VkVertexInputBindingDescription bindingDescription{};
+        bindingDescription.binding = 0;
+        bindingDescription.stride = sizeof(Particle);
+        bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+
+        return bindingDescription;
+    }
+
+    static std::array<VkVertexInputAttributeDescription, 2> getAttributeDescriptions() {
+        std::array<VkVertexInputAttributeDescription, 2> attributeDescriptions{};
+
+        attributeDescriptions[0].binding = 0;
+        attributeDescriptions[0].location = 0;
+        attributeDescriptions[0].format = VK_FORMAT_R32G32_SFLOAT;
+        attributeDescriptions[0].offset = offsetof(Particle, position);
+
+        attributeDescriptions[1].binding = 0;
+        attributeDescriptions[1].location = 1;
+        attributeDescriptions[1].format = VK_FORMAT_R32G32B32A32_SFLOAT;
+        attributeDescriptions[1].offset = offsetof(Particle, color);
+
+        return attributeDescriptions;
+    }
+};
+
 struct UniformBufferObject {
     alignas(16) glm::mat4 model;
     alignas(16) glm::mat4 view;
@@ -195,10 +230,17 @@ private:
     VkImageView depthImageView;
     std::vector<Vertex> vertices;
     std::vector<uint32_t> indices;
-
-
-
-
+    VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_1_BIT;
+    VkImage colorImage;
+    VkDeviceMemory colorImageMemory;
+    VkImageView colorImageView;
+    std::vector<VkBuffer> shaderStorageBuffers;
+    std::vector<VkDeviceMemory> shaderStorageBuffersMemory;
+    VkQueue computeQueue;
+    VkDescriptorSetLayout computeDescriptorSetLayout;
+    std::vector<VkDescriptorSet> computeDescriptorSets;
+    VkPipeline computePipeline;
+    VkPipelineLayout computePipelineLayout;
 
     // Creates the application window using GLFW
     void initWindow();
@@ -403,7 +445,7 @@ private:
 
     void createTextureImage();
 
-    void createImage(uint32_t width, uint32_t height, uint32_t mipLevels, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage,
+    void createImage(uint32_t width, uint32_t height, uint32_t mipLevels, VkSampleCountFlagBits numSamples, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage,
         VkMemoryPropertyFlags properties, VkImage& image, VkDeviceMemory& imageMemory);
 
     VkCommandBuffer beginSingleTimeCommands();
@@ -430,4 +472,18 @@ private:
     void loadModel();
 
     void generateMipmaps(VkImage image, VkFormat imageFormat, int32_t texWidth, int32_t texHeight, uint32_t mipLevels);
+
+    VkSampleCountFlagBits getMaxUsableSampleCount();
+
+    void createColorResources();
+
+    void createShaderStorageBuffer();
+
+    void createComputeDescriptorSetLayout();
+
+    void createComputeDescriptorSets();
+
+    void createComputePipeline();
+
+    void recordComputeCommandBuffer(VkCommandBuffer commandBuffer);
 };
